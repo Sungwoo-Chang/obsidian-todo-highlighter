@@ -18,30 +18,61 @@ import {
 } from '@codemirror/view';
 import { RangeSetBuilder } from '@codemirror/state';
 
-// ─── Constants ────────────────────────────────────────────────────────────────
+// ─── Types & Constants ────────────────────────────────────────────────────────
 
-const TODO_REGEX = /<!--\s*TODO(.*?)-->/;
+type Priority = 'high' | 'normal' | 'low';
+
+const PRIORITY_REGEXES: Record<Priority, RegExp> = {
+	high:   /<!--\s*TODO:HIGH(.*?)-->/i,
+	normal: /<!--\s*TODO(?!:HIGH|:LOW)(.*?)-->/i,
+	low:    /<!--\s*TODO:LOW(.*?)-->/i,
+};
+
+const CSS_VARS: Record<Priority, string> = {
+	high:   '--todo-color-high',
+	normal: '--todo-color-normal',
+	low:    '--todo-color-low',
+};
+
+const PRIORITY_ENABLED_KEY: Record<Priority, keyof TodoPluginSettings> = {
+	high:   'highlightHighEnabled',
+	normal: 'highlightNormalEnabled',
+	low:    'highlightLowEnabled',
+};
+
 const SIDEBAR_VIEW_TYPE = 'todo-highlighter-sidebar';
-const CSS_COLOR_VAR = '--todo-highlight-color';
-const DEFAULT_COLOR_HEX = '#ff8c00';
-const DEFAULT_OPACITY = 0.2;
-const DEFAULT_SHORTCUT = 'Ctrl+Shift+T';
+
+const DEFAULTS = {
+	highColorHex:           '#e53935',
+	highOpacity:            0.25,
+	colorHex:               '#ff8c00',
+	opacity:                0.2,
+	lowColorHex:            '#fdd835',
+	lowOpacity:             0.25,
+	shortcut:               'Ctrl+Shift+T',
+	highlightEnabled:       true,
+	highlightHighEnabled:   true,
+	highlightNormalEnabled: true,
+	highlightLowEnabled:    true,
+};
 
 // ─── Settings ─────────────────────────────────────────────────────────────────
 
 interface TodoPluginSettings {
+	highColorHex: string;
+	highOpacity: number;
 	colorHex: string;
 	opacity: number;
+	lowColorHex: string;
+	lowOpacity: number;
 	shortcut: string;
 	highlightEnabled: boolean;
+	highlightHighEnabled: boolean;
+	highlightNormalEnabled: boolean;
+	highlightLowEnabled: boolean;
 }
 
-const DEFAULT_SETTINGS: TodoPluginSettings = {
-	colorHex: DEFAULT_COLOR_HEX,
-	opacity: DEFAULT_OPACITY,
-	shortcut: DEFAULT_SHORTCUT,
-	highlightEnabled: true,
-};
+const DEFAULT_SETTINGS: TodoPluginSettings = { ...DEFAULTS };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -56,50 +87,62 @@ function hexToRgba(hex: string, opacity: number): string {
 function matchesShortcut(e: KeyboardEvent, shortcut: string): boolean {
 	const parts = shortcut.split('+');
 	const targetKey = parts[parts.length - 1].toUpperCase();
-
 	const modifiersMatch =
 		e.ctrlKey === parts.includes('Ctrl') &&
 		e.shiftKey === parts.includes('Shift') &&
-		e.altKey === parts.includes('Alt') &&
+		e.altKey  === parts.includes('Alt') &&
 		e.metaKey === (parts.includes('Meta') || parts.includes('Cmd'));
-
 	if (!modifiersMatch) return false;
-
-	// e.code로도 확인 (한글 IME 등에서 e.key가 'Process'가 되는 경우 대응)
 	const codeKey = e.code.startsWith('Key') ? e.code.slice(3) : e.code;
 	return e.key.toUpperCase() === targetKey || codeKey.toUpperCase() === targetKey;
 }
 
+// ─── Todo Extraction ──────────────────────────────────────────────────────────
+
 interface TodoItem {
 	lineNum: number;
 	message: string;
+	priority: Priority;
 }
 
 function extractTodos(content: string): TodoItem[] {
 	const items: TodoItem[] = [];
+	const order: Priority[] = ['high', 'normal', 'low'];
 	content.split('\n').forEach((line, index) => {
-		const match = TODO_REGEX.exec(line);
-		if (match) items.push({ lineNum: index + 1, message: match[1].trim() });
+		for (const priority of order) {
+			const match = PRIORITY_REGEXES[priority].exec(line);
+			if (match) {
+				items.push({ lineNum: index + 1, message: match[1].trim(), priority });
+				break;
+			}
+		}
 	});
 	return items;
 }
 
 // ─── Sidebar View ─────────────────────────────────────────────────────────────
 
+const SECTION_META: { key: Priority; dot: string; label: string }[] = [
+	{ key: 'high',   dot: '🔴', label: 'HIGH' },
+	{ key: 'normal', dot: '🟠', label: 'TODO' },
+	{ key: 'low',    dot: '🟡', label: 'LOW'  },
+];
+
 class TodoSidebarView extends ItemView {
 	plugin: TodoHighlighterPlugin;
 	private refreshTimer: number | null = null;
+	private collapsedSections: Set<Priority> = new Set();
 
 	constructor(leaf: WorkspaceLeaf, plugin: TodoHighlighterPlugin) {
 		super(leaf);
 		this.plugin = plugin;
 	}
 
-	getViewType() { return SIDEBAR_VIEW_TYPE; }
+	getViewType()    { return SIDEBAR_VIEW_TYPE; }
 	getDisplayText() { return 'TODO 목록'; }
-	getIcon() { return 'list-todo'; }
+	getIcon()        { return 'list-todo'; }
 
-	async onOpen() { this.refresh(); }
+	async onOpen()  { this.refresh(); }
 	async onClose() {}
 
 	scheduleRefresh() {
@@ -131,7 +174,7 @@ class TodoSidebarView extends ItemView {
 
 		const todos = extractTodos(content);
 
-		// Header
+		// ─ Header (파일명 + 전체 개수 + 마스터 토글)
 		const header = root.createDiv({ cls: 'todo-sidebar-header' });
 		header.createSpan({ text: activeFile.basename, cls: 'todo-sidebar-filename' });
 		header.createSpan({
@@ -139,47 +182,81 @@ class TodoSidebarView extends ItemView {
 			cls: 'todo-sidebar-badge' + (todos.length === 0 ? ' todo-sidebar-badge-zero' : ''),
 		});
 
-		// 하이라이트 토글 버튼
-		const toggleBtn = header.createEl('button', { cls: 'todo-toggle-btn clickable-icon' });
-		const isEnabled = this.plugin.settings.highlightEnabled;
-		setIcon(toggleBtn, isEnabled ? 'eye' : 'eye-off');
-		toggleBtn.setAttribute('aria-label', isEnabled ? '하이라이트 끄기' : '하이라이트 켜기');
-		toggleBtn.addEventListener('click', async () => {
-			await this.plugin.toggleHighlight();
-		});
+		const masterBtn = header.createEl('button', { cls: 'todo-toggle-btn clickable-icon' });
+		const masterOn = this.plugin.settings.highlightEnabled;
+		setIcon(masterBtn, masterOn ? 'eye' : 'eye-off');
+		masterBtn.setAttribute('aria-label', masterOn ? '하이라이트 모두 끄기' : '하이라이트 모두 켜기');
+		masterBtn.addEventListener('click', async () => { await this.plugin.toggleHighlight(); });
 
 		if (todos.length === 0) {
 			root.createEl('p', { text: 'TODO 주석이 없습니다.', cls: 'todo-sidebar-empty' });
 			return;
 		}
 
-		const list = root.createDiv({ cls: 'todo-sidebar-list' });
-		todos.forEach(todo => {
-			const item = list.createDiv({ cls: 'todo-sidebar-item' });
-			item.createSpan({ text: `L${todo.lineNum}`, cls: 'todo-sidebar-line-badge' });
-			item.createSpan({
-				text: todo.message || '(내용 없음)',
-				cls: 'todo-sidebar-message' + (!todo.message ? ' todo-sidebar-message-empty' : ''),
+		// ─ 우선순위별 섹션
+		SECTION_META.forEach(({ key, dot, label }) => {
+			const items = todos.filter(t => t.priority === key);
+			if (items.length === 0) return;
+
+			const isCollapsed  = this.collapsedSections.has(key);
+			const isPriorityOn = this.plugin.settings[PRIORITY_ENABLED_KEY[key]] as boolean;
+
+			const section       = root.createDiv({ cls: 'todo-section' });
+			const sectionHeader = section.createDiv({ cls: 'todo-section-header' });
+
+			// 접기/펼치기 화살표
+			const chevron = sectionHeader.createSpan({ cls: 'todo-section-chevron' });
+			setIcon(chevron, isCollapsed ? 'chevron-right' : 'chevron-down');
+
+			sectionHeader.createSpan({ text: `${dot} ${label}`, cls: 'todo-section-label' });
+			sectionHeader.createSpan({
+				text: `${items.length}`,
+				cls: `todo-section-count todo-section-count-${key}`,
 			});
 
-			item.addEventListener('click', () => {
-				const activeFile = this.app.workspace.getActiveFile();
-				if (!activeFile) return;
+			// 우선순위별 하이라이트 토글
+			const eyeBtn = sectionHeader.createEl('button', { cls: 'todo-toggle-btn clickable-icon' });
+			setIcon(eyeBtn, isPriorityOn ? 'eye' : 'eye-off');
+			eyeBtn.setAttribute('aria-label', `${label} 하이라이트 ${isPriorityOn ? '끄기' : '켜기'}`);
+			eyeBtn.addEventListener('click', async (e) => {
+				e.stopPropagation();
+				await this.plugin.toggleHighlightForPriority(key);
+			});
 
-				// 클릭 시 사이드바가 active leaf가 되므로 getActiveViewOfType 대신
-				// 모든 leaf를 순회해서 해당 파일을 열고 있는 MarkdownView를 찾음
-				const mdLeaves = this.app.workspace.getLeavesOfType('markdown');
-				const targetLeaf = mdLeaves.find(
-					leaf => (leaf.view as MarkdownView).file?.path === activeFile.path
-				);
-				if (!targetLeaf) return;
+			// 항목 목록
+			const itemsList = section.createDiv({ cls: 'todo-section-items' });
+			if (isCollapsed) itemsList.style.display = 'none';
 
-				const mdView = targetLeaf.view as MarkdownView;
-				this.app.workspace.setActiveLeaf(targetLeaf, { focus: true });
-				const pos = { line: todo.lineNum - 1, ch: 0 };
-				mdView.editor.setCursor(pos);
-				mdView.editor.scrollIntoView({ from: pos, to: pos }, true);
-				mdView.editor.focus();
+			items.forEach(todo => {
+				const item = itemsList.createDiv({ cls: 'todo-sidebar-item' });
+				item.createSpan({ text: `L${todo.lineNum}`, cls: 'todo-sidebar-line-badge' });
+				item.createSpan({
+					text: todo.message || '(내용 없음)',
+					cls: 'todo-sidebar-message' + (!todo.message ? ' todo-sidebar-message-empty' : ''),
+				});
+
+				item.addEventListener('click', () => {
+					const af = this.app.workspace.getActiveFile();
+					if (!af) return;
+					const targetLeaf = this.app.workspace.getLeavesOfType('markdown').find(
+						l => (l.view as MarkdownView).file?.path === af.path
+					);
+					if (!targetLeaf) return;
+					const mdView = targetLeaf.view as MarkdownView;
+					this.app.workspace.setActiveLeaf(targetLeaf, { focus: true });
+					const pos = { line: todo.lineNum - 1, ch: 0 };
+					mdView.editor.setCursor(pos);
+					mdView.editor.scrollIntoView({ from: pos, to: pos }, true);
+					mdView.editor.focus();
+				});
+			});
+
+			// 섹션 헤더 클릭으로 접기/펼치기
+			sectionHeader.addEventListener('click', (e) => {
+				if ((e.target as HTMLElement).closest('.todo-toggle-btn')) return;
+				if (isCollapsed) this.collapsedSections.delete(key);
+				else             this.collapsedSections.add(key);
+				this.refresh();
 			});
 		});
 	}
@@ -189,12 +266,16 @@ class TodoSidebarView extends ItemView {
 
 function buildDecorations(view: EditorView): DecorationSet {
 	const builder = new RangeSetBuilder<Decoration>();
+	const order: Priority[] = ['high', 'normal', 'low'];
 	for (const { from, to } of view.visibleRanges) {
 		let pos = from;
 		while (pos <= to) {
 			const line = view.state.doc.lineAt(pos);
-			if (TODO_REGEX.test(line.text)) {
-				builder.add(line.from, line.from, Decoration.line({ class: 'todo-highlight-line' }));
+			for (const priority of order) {
+				if (PRIORITY_REGEXES[priority].test(line.text)) {
+					builder.add(line.from, line.from, Decoration.line({ class: `todo-hl-${priority}` }));
+					break;
+				}
 			}
 			pos = line.to + 1;
 		}
@@ -238,29 +319,31 @@ class TodoHighlightView {
 		this.backdropContainer.innerHTML = '';
 
 		const scrollerRect = view.scrollDOM.getBoundingClientRect();
-		const scrollTop = view.scrollDOM.scrollTop;
-		const lines = view.contentDOM.querySelectorAll<HTMLElement>('.cm-line.todo-highlight-line');
+		const scrollTop    = view.scrollDOM.scrollTop;
+		const gutterEls    = view.dom.querySelectorAll<HTMLElement>('.cm-gutterElement');
 
-		lines.forEach(lineEl => {
-			const rect = lineEl.getBoundingClientRect();
-			const el = document.createElement('div');
-			el.className = 'todo-line-backdrop';
-			el.style.top = `${rect.top - scrollerRect.top + scrollTop}px`;
-			el.style.height = `${rect.height}px`;
-			this.backdropContainer!.appendChild(el);
-		});
+		gutterEls.forEach(el =>
+			el.classList.remove('todo-gutter-high', 'todo-gutter-normal', 'todo-gutter-low')
+		);
 
-		const gutterEls = view.dom.querySelectorAll<HTMLElement>('.cm-gutterElement');
-		gutterEls.forEach(el => el.classList.remove('todo-gutter-highlight'));
-		lines.forEach(lineEl => {
-			const lr = lineEl.getBoundingClientRect();
-			gutterEls.forEach(gutterEl => {
-				const gr = gutterEl.getBoundingClientRect();
-				if (gr.top < lr.bottom - 1 && gr.bottom > lr.top + 1) {
-					gutterEl.classList.add('todo-gutter-highlight');
-				}
+		for (const priority of ['high', 'normal', 'low'] as Priority[]) {
+			const lines = view.contentDOM.querySelectorAll<HTMLElement>(`.cm-line.todo-hl-${priority}`);
+			lines.forEach(lineEl => {
+				const rect = lineEl.getBoundingClientRect();
+				const el   = document.createElement('div');
+				el.className = `todo-line-backdrop todo-backdrop-${priority}`;
+				el.style.top    = `${rect.top - scrollerRect.top + scrollTop}px`;
+				el.style.height = `${rect.height}px`;
+				this.backdropContainer!.appendChild(el);
+
+				gutterEls.forEach(gutterEl => {
+					const gr = gutterEl.getBoundingClientRect();
+					if (gr.top < rect.bottom - 1 && gr.bottom > rect.top + 1) {
+						gutterEl.classList.add(`todo-gutter-${priority}`);
+					}
+				});
 			});
-		});
+		}
 	}
 }
 
@@ -284,50 +367,57 @@ class TodoSettingTab extends PluginSettingTab {
 		const { containerEl } = this;
 		containerEl.empty();
 
-		// ── 하이라이트 색상
-		containerEl.createEl('h3', { text: '하이라이트 색상' });
+		const addColorBlock = (
+			title: string,
+			hexKey: keyof TodoPluginSettings,
+			opacityKey: keyof TodoPluginSettings,
+			defaultHex: string,
+			defaultOpacity: number,
+		) => {
+			containerEl.createEl('h3', { text: title });
+			new Setting(containerEl)
+				.setName('색상')
+				.addColorPicker(cp => {
+					cp.setValue(this.plugin.settings[hexKey] as string);
+					cp.onChange(async value => {
+						(this.plugin.settings as any)[hexKey] = value;
+						await this.plugin.saveSettings();
+						this.plugin.applyColor();
+					});
+				})
+				.addButton(btn => {
+					btn.setButtonText('기본값으로');
+					btn.onClick(async () => {
+						(this.plugin.settings as any)[hexKey]     = defaultHex;
+						(this.plugin.settings as any)[opacityKey] = defaultOpacity;
+						await this.plugin.saveSettings();
+						this.plugin.applyColor();
+						this.display();
+					});
+				});
+			new Setting(containerEl)
+				.setName('투명도')
+				.setDesc('0 (완전 투명) ~ 1 (불투명)')
+				.addSlider(slider => {
+					slider.setLimits(0, 1, 0.05);
+					slider.setValue(this.plugin.settings[opacityKey] as number);
+					slider.setDynamicTooltip();
+					slider.onChange(async value => {
+						(this.plugin.settings as any)[opacityKey] = value;
+						await this.plugin.saveSettings();
+						this.plugin.applyColor();
+					});
+				});
+		};
 
-		new Setting(containerEl)
-			.setName('색상')
-			.setDesc('TODO 주석 줄의 배경 색상')
-			.addColorPicker(cp => {
-				cp.setValue(this.plugin.settings.colorHex);
-				cp.onChange(async value => {
-					this.plugin.settings.colorHex = value;
-					await this.plugin.saveSettings();
-					this.plugin.applyColor();
-				});
-			})
-			.addButton(btn => {
-				btn.setButtonText('기본값으로');
-				btn.onClick(async () => {
-					this.plugin.settings.colorHex = DEFAULT_COLOR_HEX;
-					this.plugin.settings.opacity = DEFAULT_OPACITY;
-					await this.plugin.saveSettings();
-					this.plugin.applyColor();
-					this.display();
-				});
-			});
-
-		new Setting(containerEl)
-			.setName('투명도')
-			.setDesc('0 (완전 투명) ~ 1 (불투명)')
-			.addSlider(slider => {
-				slider.setLimits(0, 1, 0.05);
-				slider.setValue(this.plugin.settings.opacity);
-				slider.setDynamicTooltip();
-				slider.onChange(async value => {
-					this.plugin.settings.opacity = value;
-					await this.plugin.saveSettings();
-					this.plugin.applyColor();
-				});
-			});
+		addColorBlock('🔴 HIGH 색상', 'highColorHex', 'highOpacity', DEFAULTS.highColorHex, DEFAULTS.highOpacity);
+		addColorBlock('🟠 TODO 색상', 'colorHex',     'opacity',     DEFAULTS.colorHex,     DEFAULTS.opacity);
+		addColorBlock('🟡 LOW 색상',  'lowColorHex',  'lowOpacity',  DEFAULTS.lowColorHex,  DEFAULTS.lowOpacity);
 
 		// ── 단축키
 		containerEl.createEl('h3', { text: '단축키' });
 
 		let recordBtnRef!: ButtonComponent;
-
 		const shortcutSetting = new Setting(containerEl)
 			.setName('TODO 주석 삽입')
 			.setDesc('현재 커서 위치에 <!-- TODO  --> 를 삽입합니다.');
@@ -342,20 +432,17 @@ class TodoSettingTab extends PluginSettingTab {
 				recordBtnRef = btn;
 				btn.setButtonText('변경');
 				btn.onClick(() => {
-					if (this.isRecording) {
-						this.stopRecording(shortcutDisplay, btn);
-					} else {
-						this.startRecording(shortcutDisplay, btn);
-					}
+					if (this.isRecording) this.stopRecording(shortcutDisplay, btn);
+					else                  this.startRecording(shortcutDisplay, btn);
 				});
 			})
 			.addButton(btn => {
 				btn.setButtonText('기본값으로');
 				btn.onClick(async () => {
 					this.stopRecording(shortcutDisplay, recordBtnRef);
-					this.plugin.settings.shortcut = DEFAULT_SHORTCUT;
+					this.plugin.settings.shortcut = DEFAULTS.shortcut;
 					await this.plugin.saveSettings();
-					shortcutDisplay.setText(DEFAULT_SHORTCUT);
+					shortcutDisplay.setText(DEFAULTS.shortcut);
 				});
 			});
 	}
@@ -370,14 +457,12 @@ class TodoSettingTab extends PluginSettingTab {
 			if (['Control', 'Shift', 'Alt', 'Meta'].includes(e.key)) return;
 			e.preventDefault();
 			e.stopPropagation();
-
 			const parts: string[] = [];
-			if (e.ctrlKey) parts.push('Ctrl');
+			if (e.ctrlKey)  parts.push('Ctrl');
 			if (e.shiftKey) parts.push('Shift');
-			if (e.altKey) parts.push('Alt');
-			if (e.metaKey) parts.push('Cmd');
+			if (e.altKey)   parts.push('Alt');
+			if (e.metaKey)  parts.push('Cmd');
 			parts.push(e.key.length === 1 ? e.key.toUpperCase() : e.key);
-
 			const shortcut = parts.join('+');
 			this.plugin.settings.shortcut = shortcut;
 			await this.plugin.saveSettings();
@@ -398,15 +483,13 @@ class TodoSettingTab extends PluginSettingTab {
 		}
 	}
 
-	hide() {
-		this.stopRecording();
-	}
+	hide() { this.stopRecording(); }
 }
 
 // ─── Main Plugin ──────────────────────────────────────────────────────────────
 
 export default class TodoHighlighterPlugin extends Plugin {
-	settings: TodoPluginSettings = DEFAULT_SETTINGS;
+	settings: TodoPluginSettings = { ...DEFAULT_SETTINGS };
 
 	async onload() {
 		await this.loadSettings();
@@ -418,8 +501,7 @@ export default class TodoHighlighterPlugin extends Plugin {
 		this.addSettingTab(new TodoSettingTab(this.app, this));
 		this.applyColor();
 
-		// 단축키로 <!-- TODO  --> 삽입
-		// capture: true → IME보다 먼저 이벤트 수신 (한글 등 입력 중에도 동작)
+		// capture: true → IME보다 먼저 이벤트 수신
 		this.registerDomEvent(document, 'keydown', (e: KeyboardEvent) => {
 			if (!matchesShortcut(e, this.settings.shortcut)) return;
 			const mdView = this.app.workspace.getActiveViewOfType(MarkdownView);
@@ -428,7 +510,6 @@ export default class TodoHighlighterPlugin extends Plugin {
 			const editor = mdView.editor;
 			const cursor = editor.getCursor();
 			editor.replaceRange('<!-- TODO  -->', cursor);
-			// 커서를 TODO와 --> 사이에 위치
 			editor.setCursor({ line: cursor.line, ch: cursor.ch + 10 });
 		}, { capture: true });
 
@@ -438,7 +519,7 @@ export default class TodoHighlighterPlugin extends Plugin {
 
 	async onunload() {
 		this.app.workspace.detachLeavesOfType(SIDEBAR_VIEW_TYPE);
-		document.body.style.removeProperty(CSS_COLOR_VAR);
+		Object.values(CSS_VARS).forEach(v => document.body.style.removeProperty(v));
 	}
 
 	async loadSettings() {
@@ -450,10 +531,16 @@ export default class TodoHighlighterPlugin extends Plugin {
 	}
 
 	applyColor() {
-		const color = this.settings.highlightEnabled
-			? hexToRgba(this.settings.colorHex, this.settings.opacity)
-			: 'transparent';
-		document.body.style.setProperty(CSS_COLOR_VAR, color);
+		const master = this.settings.highlightEnabled;
+		const set = (cssVar: string, hex: string, opacity: number, enabled: boolean) => {
+			document.body.style.setProperty(
+				cssVar,
+				master && enabled ? hexToRgba(hex, opacity) : 'transparent'
+			);
+		};
+		set(CSS_VARS.high,   this.settings.highColorHex, this.settings.highOpacity,  this.settings.highlightHighEnabled);
+		set(CSS_VARS.normal, this.settings.colorHex,     this.settings.opacity,       this.settings.highlightNormalEnabled);
+		set(CSS_VARS.low,    this.settings.lowColorHex,  this.settings.lowOpacity,    this.settings.highlightLowEnabled);
 	}
 
 	async toggleHighlight() {
@@ -463,12 +550,17 @@ export default class TodoHighlighterPlugin extends Plugin {
 		this.refreshSidebar();
 	}
 
+	async toggleHighlightForPriority(priority: Priority) {
+		const key = PRIORITY_ENABLED_KEY[priority];
+		(this.settings as any)[key] = !(this.settings as any)[key];
+		await this.saveSettings();
+		this.applyColor();
+		this.refreshSidebar();
+	}
+
 	async activateSidebar() {
 		const leaves = this.app.workspace.getLeavesOfType(SIDEBAR_VIEW_TYPE);
-		if (leaves.length > 0) {
-			this.app.workspace.revealLeaf(leaves[0]);
-			return;
-		}
+		if (leaves.length > 0) { this.app.workspace.revealLeaf(leaves[0]); return; }
 		const leaf = this.app.workspace.getRightLeaf(false);
 		if (leaf) {
 			await leaf.setViewState({ type: SIDEBAR_VIEW_TYPE, active: true });

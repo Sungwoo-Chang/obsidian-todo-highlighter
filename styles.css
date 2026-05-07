@@ -2,25 +2,24 @@
 
 .todo-backdrop-container {
 	position: absolute;
-	top: 0;
-	left: 0;
-	right: 0;
-	bottom: 0;
+	top: 0; left: 0; right: 0; bottom: 0;
 	pointer-events: none;
 }
 
 .todo-line-backdrop {
 	position: absolute;
-	left: 0;
-	right: 0;
-	background-color: var(--todo-highlight-color, rgba(255, 140, 0, 0.2));
+	left: 0; right: 0;
 }
 
-.todo-gutter-highlight {
-	background-color: var(--todo-highlight-color, rgba(255, 140, 0, 0.2)) !important;
-}
+.todo-backdrop-high   { background-color: var(--todo-color-high,   rgba(229, 57,  53,  0.25)); }
+.todo-backdrop-normal { background-color: var(--todo-color-normal, rgba(255, 140, 0,   0.2));  }
+.todo-backdrop-low    { background-color: var(--todo-color-low,    rgba(253, 216, 53,  0.25)); }
 
-.todo-highlight-line {
+.todo-gutter-high   { background-color: var(--todo-color-high,   rgba(229, 57,  53,  0.25)) !important; }
+.todo-gutter-normal { background-color: var(--todo-color-normal, rgba(255, 140, 0,   0.2))  !important; }
+.todo-gutter-low    { background-color: var(--todo-color-low,    rgba(253, 216, 53,  0.25)) !important; }
+
+.todo-hl-high, .todo-hl-normal, .todo-hl-low {
 	background-color: transparent !important;
 }
 
@@ -31,14 +30,15 @@
 	overflow-y: auto;
 	height: 100%;
 	box-sizing: border-box;
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
 }
 
 .todo-sidebar-header {
 	display: flex;
 	align-items: center;
-	justify-content: space-between;
 	gap: 8px;
-	margin-bottom: 12px;
 	padding-bottom: 8px;
 	border-bottom: 1px solid var(--background-modifier-border);
 }
@@ -68,44 +68,78 @@
 	color: var(--text-muted);
 }
 
-.todo-toggle-btn {
-	background: none;
-	border: none;
-	cursor: pointer;
-	padding: 2px 4px;
-	border-radius: 4px;
-	color: var(--text-muted);
-	flex-shrink: 0;
-	display: flex;
-	align-items: center;
-	transition: color 0.15s ease, background-color 0.15s ease;
-}
-
-.todo-toggle-btn:hover {
-	background-color: var(--background-modifier-hover);
-	color: var(--text-normal);
-}
-
 .todo-sidebar-empty {
 	color: var(--text-muted);
 	text-align: center;
 	font-style: italic;
-	margin-top: 24px;
+	margin-top: 20px;
 	font-size: 0.9em;
 }
 
-.todo-sidebar-list {
+/* ── 우선순위 섹션 ────────────────────────────────────────────────────────────── */
+
+.todo-section {
+	border-radius: 6px;
+	overflow: hidden;
+}
+
+.todo-section-header {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 5px 6px;
+	border-radius: 5px;
+	cursor: pointer;
+	user-select: none;
+	transition: background-color 0.12s ease;
+}
+
+.todo-section-header:hover {
+	background-color: var(--background-modifier-hover);
+}
+
+.todo-section-chevron {
+	color: var(--text-muted);
+	display: flex;
+	align-items: center;
+	flex-shrink: 0;
+}
+
+.todo-section-label {
+	font-size: 0.82em;
+	font-weight: 700;
+	color: var(--text-muted);
+	letter-spacing: 0.04em;
+	flex: 1;
+}
+
+.todo-section-count {
+	font-size: 0.75em;
+	font-weight: 700;
+	border-radius: 8px;
+	padding: 1px 7px;
+	flex-shrink: 0;
+}
+
+.todo-section-count-high   { background-color: rgba(229, 57,  53,  0.15); color: #e53935; }
+.todo-section-count-normal { background-color: rgba(255, 140, 0,   0.15); color: #cc7000; }
+.todo-section-count-low    { background-color: rgba(180, 155, 0,   0.15); color: #7a6800; }
+
+.todo-section-items {
+	padding: 2px 0 2px 12px;
 	display: flex;
 	flex-direction: column;
-	gap: 4px;
+	gap: 2px;
 }
+
+/* ── 항목 ─────────────────────────────────────────────────────────────────────── */
 
 .todo-sidebar-item {
 	display: flex;
 	align-items: flex-start;
 	gap: 8px;
-	padding: 8px;
-	border-radius: 6px;
+	padding: 6px 8px;
+	border-radius: 5px;
 	cursor: pointer;
 	transition: background-color 0.12s ease;
 }
@@ -137,6 +171,26 @@
 	font-style: italic;
 }
 
+/* ── 토글 버튼 ─────────────────────────────────────────────────────────────────── */
+
+.todo-toggle-btn {
+	background: none;
+	border: none;
+	cursor: pointer;
+	padding: 2px 4px;
+	border-radius: 4px;
+	color: var(--text-muted);
+	flex-shrink: 0;
+	display: flex;
+	align-items: center;
+	transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.todo-toggle-btn:hover {
+	background-color: var(--background-modifier-hover);
+	color: var(--text-normal);
+}
+
 /* ── 설정 ─────────────────────────────────────────────────────────────────────── */
 
 .todo-shortcut-display {
@@ -158,5 +212,5 @@
 
 @keyframes todo-pulse {
 	0%, 100% { opacity: 1; }
-	50% { opacity: 0.4; }
+	50%       { opacity: 0.4; }
 }
