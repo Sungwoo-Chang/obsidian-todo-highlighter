@@ -142,7 +142,18 @@ class TodoSidebarView extends ItemView {
 	getDisplayText() { return 'TODO 목록'; }
 	getIcon()        { return 'list-todo'; }
 
-	async onOpen()  { this.refresh(); }
+	async onOpen() {
+		// Obsidian은 mousemove 기준으로 hoverLeaf를 갱신하므로,
+		// mouseenter 후 멈춘 상태에서는 wheel 이벤트가 이전 leaf로 라우팅됨.
+		// wheel을 직접 가로채 stopPropagation으로 Obsidian 라우팅을 우회한다.
+		const scrollEl = this.containerEl.children[1] as HTMLElement;
+		this.registerDomEvent(this.containerEl, 'wheel', (e: WheelEvent) => {
+			e.stopPropagation();
+			scrollEl.scrollTop += e.deltaY;
+		}, { passive: true });
+
+		this.refresh();
+	}
 	async onClose() {}
 
 	scheduleRefresh() {

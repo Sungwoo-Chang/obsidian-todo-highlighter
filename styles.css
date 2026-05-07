@@ -29,16 +29,15 @@
 	padding: 12px;
 	overflow-y: auto;
 	height: 100%;
+	min-height: 0;        /* flex 컨테이너에서 스크롤 활성화에 필요 */
 	box-sizing: border-box;
-	display: flex;
-	flex-direction: column;
-	gap: 4px;
 }
 
 .todo-sidebar-header {
 	display: flex;
 	align-items: center;
 	gap: 8px;
+	margin-bottom: 8px;
 	padding-bottom: 8px;
 	border-bottom: 1px solid var(--background-modifier-border);
 }
@@ -81,6 +80,7 @@
 .todo-section {
 	border-radius: 6px;
 	overflow: hidden;
+	margin-bottom: 4px;
 }
 
 .todo-section-header {
