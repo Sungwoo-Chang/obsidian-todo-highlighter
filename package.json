@@ -1,0 +1,20 @@
+{
+	"name": "todo-gutter",
+	"version": "1.0.0",
+	"description": "Obsidian plugin to highlight TODO comment lines in orange",
+	"main": "main.js",
+	"scripts": {
+		"dev": "node esbuild.config.mjs",
+		"build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production"
+	},
+	"devDependencies": {
+		"@codemirror/state": "^6.0.0",
+		"@codemirror/view": "^6.0.0",
+		"@types/node": "^22.0.0",
+		"builtin-modules": "^3.3.0",
+		"esbuild": "0.25.0",
+		"obsidian": "latest",
+		"tslib": "2.6.0",
+		"typescript": "5.4.5"
+	}
+}

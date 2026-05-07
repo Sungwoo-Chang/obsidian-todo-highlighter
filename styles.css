@@ -1,0 +1,162 @@
+/* ── 하이라이트 backdrop ─────────────────────────────────────────────────────── */
+
+.todo-backdrop-container {
+	position: absolute;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	pointer-events: none;
+}
+
+.todo-line-backdrop {
+	position: absolute;
+	left: 0;
+	right: 0;
+	background-color: var(--todo-highlight-color, rgba(255, 140, 0, 0.2));
+}
+
+.todo-gutter-highlight {
+	background-color: var(--todo-highlight-color, rgba(255, 140, 0, 0.2)) !important;
+}
+
+.todo-highlight-line {
+	background-color: transparent !important;
+}
+
+/* ── 사이드바 ─────────────────────────────────────────────────────────────────── */
+
+.todo-sidebar-root {
+	padding: 12px;
+	overflow-y: auto;
+	height: 100%;
+	box-sizing: border-box;
+}
+
+.todo-sidebar-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	margin-bottom: 12px;
+	padding-bottom: 8px;
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.todo-sidebar-filename {
+	font-weight: 600;
+	font-size: 0.9em;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	flex: 1;
+	color: var(--text-normal);
+}
+
+.todo-sidebar-badge {
+	background-color: rgba(255, 140, 0, 0.85);
+	color: white;
+	border-radius: 10px;
+	padding: 2px 8px;
+	font-size: 0.75em;
+	font-weight: 700;
+	flex-shrink: 0;
+}
+
+.todo-sidebar-badge-zero {
+	background-color: var(--background-modifier-border);
+	color: var(--text-muted);
+}
+
+.todo-toggle-btn {
+	background: none;
+	border: none;
+	cursor: pointer;
+	padding: 2px 4px;
+	border-radius: 4px;
+	color: var(--text-muted);
+	flex-shrink: 0;
+	display: flex;
+	align-items: center;
+	transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.todo-toggle-btn:hover {
+	background-color: var(--background-modifier-hover);
+	color: var(--text-normal);
+}
+
+.todo-sidebar-empty {
+	color: var(--text-muted);
+	text-align: center;
+	font-style: italic;
+	margin-top: 24px;
+	font-size: 0.9em;
+}
+
+.todo-sidebar-list {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+.todo-sidebar-item {
+	display: flex;
+	align-items: flex-start;
+	gap: 8px;
+	padding: 8px;
+	border-radius: 6px;
+	cursor: pointer;
+	transition: background-color 0.12s ease;
+}
+
+.todo-sidebar-item:hover {
+	background-color: var(--background-modifier-hover);
+}
+
+.todo-sidebar-line-badge {
+	background-color: var(--background-modifier-border);
+	color: var(--text-muted);
+	border-radius: 4px;
+	padding: 1px 5px;
+	font-size: 0.72em;
+	font-family: var(--font-monospace);
+	flex-shrink: 0;
+	margin-top: 2px;
+}
+
+.todo-sidebar-message {
+	font-size: 0.88em;
+	color: var(--text-normal);
+	word-break: break-word;
+	line-height: 1.4;
+}
+
+.todo-sidebar-message-empty {
+	color: var(--text-muted);
+	font-style: italic;
+}
+
+/* ── 설정 ─────────────────────────────────────────────────────────────────────── */
+
+.todo-shortcut-display {
+	font-family: var(--font-monospace);
+	font-size: 0.85em;
+	background-color: var(--background-modifier-border);
+	color: var(--text-normal);
+	padding: 3px 8px;
+	border-radius: 4px;
+	margin-right: 8px;
+	display: inline-block;
+}
+
+.todo-shortcut-recording {
+	background-color: rgba(255, 140, 0, 0.15);
+	color: var(--color-orange, #ff8c00);
+	animation: todo-pulse 0.9s ease-in-out infinite;
+}
+
+@keyframes todo-pulse {
+	0%, 100% { opacity: 1; }
+	50% { opacity: 0.4; }
+}

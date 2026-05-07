@@ -1,0 +1,10 @@
+{
+	"id": "todo-gutter",
+	"name": "TODO Highlighter",
+	"version": "1.0.0",
+	"minAppVersion": "1.4.0",
+	"description": "Highlights lines containing <!-- TODO ... --> comments in orange",
+	"author": "jsw",
+	"authorUrl": "",
+	"isDesktopOnly": false
+}
